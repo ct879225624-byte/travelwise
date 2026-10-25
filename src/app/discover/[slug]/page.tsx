@@ -1,0 +1,56 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { ArrowLeft, CalendarClock, Check, CircleAlert, ExternalLink, FileCheck2, HelpCircle, History as RevisionHistory, Layers3, Link2, ShieldCheck } from "lucide-react";
+import { DemoMark } from "@/components/promotion-card";
+import { StatusBadge } from "@/components/status-badge";
+import { getPromotion } from "@/modules/intelligence/service";
+import { formatInstant } from "@/shared/time";
+import type { Metadata } from "next";
+import { auth } from "@/auth";
+import { PromotionPlanControls } from "./promotion-plan-controls";
+
+export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const promotion = await getPromotion((await params).slug);
+  return promotion ? { title: promotion.title, description: promotion.summary } : { title: "活动不存在" };
+}
+
+const qualificationLabel = { unknown: "尚未确认", verified: "已核实", ineligible: "不适用" } as const;
+const stackingLabel = { unknown: "未知，不能默认有效", allowed: "规则允许", disallowed: "规则禁止" } as const;
+const dateLabels = { enrollmentStartsAt: "报名开始", enrollmentEndsAt: "报名截止", bookingStartsAt: "预订开始", bookingEndsAt: "预订截止", stayStartsAt: "入住开始", stayEndsAt: "入住截止", claimStartsAt: "奖励领取开始", claimEndsAt: "奖励领取截止", otherDeadlineAt: "其他截止时间" } as const;
+
+export default async function PromotionDetailPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params; const promotion = await getPromotion(slug); if (!promotion) notFound();
+  const session = await auth(); const authenticated = Boolean(session?.user?.email);
+  const range = `${promotion.startsAt ? formatInstant(promotion.startsAt, promotion.timeZone) : "未知"} — ${promotion.endsAt ? formatInstant(promotion.endsAt, promotion.timeZone) : "未知"}`;
+  return <section className="mx-auto max-w-6xl px-5 py-10 sm:py-14 lg:px-8"><Link href="/discover" className="focus-ring inline-flex items-center gap-2 rounded-lg text-sm font-bold text-brand hover:text-brand-deep"><ArrowLeft size={16} />返回发现</Link>
+    <div className="mt-7 grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]"><main className="rounded-[2rem] border border-line bg-surface p-6 shadow-sm sm:p-10" data-testid="promotion-detail">
+      <div className="flex flex-wrap items-center gap-2"><span className="rounded-full bg-surface-soft px-3 py-1.5 text-xs font-bold text-brand">{promotion.category}</span><span className="text-xs font-semibold text-muted">{promotion.platform}</span>{promotion.isDemo && <DemoMark />}<StatusBadge type="lifecycle" value={promotion.lifecycleStatus} /><StatusBadge type="verification" value={promotion.verificationStatus} /></div>
+      <h1 className="mt-6 text-3xl font-black leading-tight tracking-[-.04em] text-brand-deep sm:text-5xl">{promotion.title}</h1><p className="mt-5 max-w-3xl text-base leading-8 text-muted">{promotion.summary}</p>
+      <div className="mt-8 grid gap-4 border-y border-line py-5 sm:grid-cols-3"><Info icon={<CalendarClock size={17} />} label="活动有效期" value={`${range}（${promotion.timeZone}）`} /><Info icon={<HelpCircle size={17} />} label="适用资格" value={qualificationLabel[promotion.qualification]} /><Info icon={<Layers3 size={17} />} label="叠加关系" value={stackingLabel[promotion.stacking]} /></div>
+      {promotion.rewardAmount || promotion.rewardType ? <section className="mt-8 rounded-2xl border border-brand/15 bg-surface-soft p-5"><p className="text-xs font-bold text-brand">奖励或优惠摘要</p><p className="mt-2 text-2xl font-black text-brand-deep">{promotion.rewardAmount ? `${promotion.rewardAmount} ${promotion.rewardUnit ?? promotion.pointsName}` : promotion.rewardType}</p><p className="mt-2 text-xs leading-5 text-muted">页面只展示来源中记录的奖励口径，不把奖励金额解释为你的实际节省金额。</p></section> : null}
+      {promotion.rewardAmount || promotion.rewardType ? <Link href={`/calculate/rewards?promotion=${encodeURIComponent(promotion.slug)}${promotion.verificationStatus === "official_verified" && !promotion.isDemo && promotion.rewardUnit?.includes("积分") && promotion.rewardAmount ? `&reward=${encodeURIComponent(promotion.rewardAmount)}` : ""}`} className="focus-ring mt-5 inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-3 text-sm font-bold text-white hover:bg-brand-deep">计算这项活动收益<ArrowLeft size={16} className="rotate-180" /></Link> : null}
+      <PromotionPlanControls promotionId={promotion.id} authenticated={authenticated} taskDrafts={[
+        ...(promotion.dates.enrollmentEndsAt ? [{ key: "enroll", title: "报名参加活动", deadlineAt: promotion.dates.enrollmentEndsAt }] : []),
+        ...(promotion.dates.bookingEndsAt ? [{ key: "book", title: "完成符合条件的预订", deadlineAt: promotion.dates.bookingEndsAt }] : []),
+        ...(promotion.dates.stayEndsAt ? [{ key: "stay", title: "完成符合条件的消费或住宿", deadlineAt: promotion.dates.stayEndsAt }] : []),
+        { key: "qualify", title: "核实活动达标情况", deadlineAt: null },
+        ...(promotion.dates.claimEndsAt ? [{ key: "claim", title: "领取活动奖励", deadlineAt: promotion.dates.claimEndsAt }] : []),
+        { key: "credit", title: "检查奖励积分实际到账", deadlineAt: null },
+      ]} />
+      <Section title="参与条件" icon={<ShieldCheck size={19} />}><InfoList label="会员资格" items={promotion.eligibility} /><InfoList label="适用品牌" items={promotion.brands} /><InfoList label="适用地区" items={promotion.regions} /><InfoList label="预订渠道" items={promotion.channels} /><p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">资格状态：{qualificationLabel[promotion.qualification]}。活动已核实也不代表每位用户都符合资格。</p></Section>
+      <Section title="关键时间" icon={<CalendarClock size={19} />}><div className="grid gap-3 sm:grid-cols-2">{Object.entries(promotion.dates).filter(([, value]) => value).map(([key, value]) => <div key={key} className="rounded-2xl border border-line p-4"><p className="text-xs font-semibold text-muted">{dateLabels[key as keyof typeof dateLabels]}</p><p className="mt-1 text-sm font-bold leading-6 text-brand-deep">{formatInstant(value!, promotion.timeZone)}</p><p className="mt-1 text-[11px] text-muted">{promotion.timeZone}</p></div>)}{!Object.values(promotion.dates).some(Boolean) && <p className="text-sm text-muted">暂无分阶段时间信息，请以来源证据为准。</p>}</div></Section>
+      {promotion.steps.length > 0 && <Section title="操作步骤" icon={<Check size={19} />}><ol className="space-y-3">{promotion.steps.map((step, index) => <li key={`${promotion.id}-step-${index}`} className="flex gap-3 rounded-2xl bg-surface-soft px-4 py-3 text-sm leading-6 text-brand-deep"><span className="grid size-6 shrink-0 place-items-center rounded-full bg-brand text-xs font-black text-white">{index + 1}</span><span>{step}</span></li>)}</ol></Section>}
+      {promotion.notes.length > 0 && <Section title="限制与注意事项" icon={<CircleAlert size={19} />}><ul className="space-y-2 text-sm leading-6 text-muted">{promotion.notes.map((note) => <li key={note} className="flex gap-2"><span className="text-accent">•</span>{note}</li>)}</ul></Section>}
+      <Section title="长期规则" icon={<FileCheck2 size={19} />}>{promotion.ruleVersion ? <><p className="text-sm font-bold text-brand-deep">规则版本 V{promotion.ruleVersion.version}</p><ol className="mt-4 space-y-3">{promotion.ruleVersion.terms.map((term, index) => <li key={`${promotion.ruleVersion!.id}-${index}`} className="flex gap-3 rounded-2xl border border-line px-4 py-3 text-sm leading-6 text-brand-deep"><span className="font-black text-brand">{index + 1}</span><span>{term}</span></li>)}</ol></> : <p className="text-sm text-muted">当前活动尚未关联已发布的规则版本。</p>}</Section>
+    </main><aside className="space-y-4">
+      <div className="rounded-3xl border border-line bg-surface p-5"><div className="flex items-center gap-2 text-sm font-extrabold text-brand-deep"><Link2 size={16} />关联内容</div>{promotion.relatedGuides.length ? <div className="mt-4 space-y-3"><p className="text-xs font-bold text-muted">攻略</p>{promotion.relatedGuides.map((guide) => <Link key={guide.slug} href={`/guides/${guide.slug}`} className="focus-ring block rounded-xl bg-surface-soft p-3 text-sm font-bold text-brand hover:bg-brand/10">{guide.title}</Link>)}</div> : <p className="mt-4 text-sm leading-6 text-muted">暂无已发布攻略关联。</p>}{promotion.relatedPromotions.length ? <div className="mt-5 space-y-3"><p className="text-xs font-bold text-muted">相关活动</p>{promotion.relatedPromotions.map((item) => <Link key={item.slug} href={`/discover/${item.slug}`} className="focus-ring block rounded-xl bg-surface-soft p-3 text-sm font-bold text-brand hover:bg-brand/10">{item.title}</Link>)}</div> : null}</div>
+      <div className="rounded-3xl border border-line bg-surface p-5"><div className="flex items-center gap-2 text-sm font-extrabold text-brand-deep"><CircleAlert size={16} />来源与证据</div><p className="mt-2 text-xs text-muted">{promotion.evidence.length} 条公开证据</p>{promotion.evidence.map((item) => <div key={item.id} className="mt-4 border-t border-line pt-3"><div className="flex items-start justify-between gap-2"><p className="text-sm font-bold text-brand-deep">{item.sourceLabel}</p><span className="text-[10px] font-bold text-muted">{item.sourceKind === "official" ? "官方来源" : item.sourceKind === "community" ? "社区来源" : "其他来源"}</span></div><p className="mt-2 text-xs leading-5 text-muted">{item.excerpt}</p><p className="mt-2 text-[11px] text-muted">核实于 {item.verifiedAt ? formatInstant(item.verifiedAt, promotion.timeZone) : "尚未核实"}</p>{item.sourceUrl && <a href={item.sourceUrl} target="_blank" rel="noreferrer" className="focus-ring mt-2 inline-flex items-center gap-1 text-xs font-bold text-brand">打开来源<ExternalLink size={12} /></a>}</div>)}</div>
+      {promotion.history.length > 0 && <div className="rounded-3xl border border-line bg-surface p-5"><div className="flex items-center gap-2 text-sm font-extrabold text-brand-deep"><RevisionHistory size={16} />公开修订信息</div><div className="mt-4 space-y-2">{promotion.history.map((item) => <p key={item.version} className="flex justify-between text-xs text-muted"><span>版本 V{item.version}</span><span>{formatInstant(item.createdAt, promotion.timeZone)}</span></p>)}</div></div>}
+      <div className="rounded-3xl border border-brand/15 bg-surface-soft p-5"><p className="text-xs font-bold text-brand">状态阅读提示</p><p className="mt-2 text-xs leading-5 text-muted">生命周期、可信度和资格互相独立。例如“官方已核实 + 已结束”是合法状态组合。</p></div>
+    </aside></div></section>;
+}
+function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) { return <section className="mt-10 border-t border-line pt-8"><div className="flex items-center gap-2 text-brand"><span>{icon}</span><h2 className="text-lg font-extrabold text-brand-deep">{title}</h2></div><div className="mt-4">{children}</div></section>; }
+function Info({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) { return <div className="flex items-start gap-3"><span className="mt-0.5 text-brand">{icon}</span><div><p className="text-xs font-semibold text-muted">{label}</p><p className="mt-1 text-sm font-bold leading-6 text-brand-deep">{value}</p></div></div>; }
+function InfoList({ label, items }: { label: string; items: string[] }) { return <div className="mb-4"><p className="text-xs font-bold text-muted">{label}</p><p className="mt-1 text-sm leading-6 text-brand-deep">{items.length ? items.join("；") : "暂无信息"}</p></div>; }

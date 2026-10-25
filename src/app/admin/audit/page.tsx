@@ -1,0 +1,3 @@
+import { requireAdmin } from "@/modules/admin/auth";
+import { listAuditLogs } from "@/modules/admin/service";
+export default async function AuditPage() { await requireAdmin(); const logs = await listAuditLogs(); return <section className="mx-auto max-w-5xl px-5 py-10 lg:px-8"><h1 className="text-3xl font-black text-brand-deep">审计记录</h1><div className="mt-8 space-y-3">{logs.map((log) => <div key={log.id} className="rounded-2xl border border-line bg-surface p-4 text-sm"><p className="font-bold text-brand-deep">{log.operation} · {log.entityType}</p><p className="mt-1 text-muted">{log.actor ?? "系统"} · {log.occurredAt.toISOString()}</p><p className="mt-1 text-xs text-muted">字段：{log.changedFields.join(", ")}</p></div>)}</div></section>; }

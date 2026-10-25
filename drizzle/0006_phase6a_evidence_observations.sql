@@ -1,0 +1,1 @@
+ALTER TABLE "evidence" DROP CONSTRAINT "evidence_source_url";

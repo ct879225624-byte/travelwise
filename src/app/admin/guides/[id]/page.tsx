@@ -1,0 +1,7 @@
+import { ActionForm } from "@/app/admin/action-form";
+import { notFound } from "next/navigation";
+import { requireAdmin } from "@/modules/admin/auth";
+import { getGuide, listGuideCategories } from "@/modules/admin/service";
+import { GuideForm } from "@/app/admin/guide-form";
+import { statusGuideAction } from "@/app/admin/actions";
+export default async function EditGuidePage({ params }: { params: Promise<{ id: string }> }) { await requireAdmin(); const { id } = await params; const [result, categories] = await Promise.all([getGuide(id), listGuideCategories()]); if (!result) notFound(); return <section className="mx-auto max-w-5xl px-5 py-10 lg:px-8"><h1 className="text-3xl font-black text-brand-deep">编辑攻略</h1><div className="mt-8 rounded-3xl border border-line bg-surface p-6 sm:p-8"><GuideForm categories={categories} guide={result.guide} /><div className="mt-6 flex gap-2"><ActionForm action={statusGuideAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="pending_review" /><button className="rounded-xl border border-line px-4 py-2 text-sm font-bold text-brand">提交审核</button></ActionForm><ActionForm action={statusGuideAction}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="published" /><button className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white">发布</button></ActionForm></div></div></section>; }

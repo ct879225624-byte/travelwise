@@ -1,0 +1,1 @@
+export default function Loading() { return <section className="mx-auto max-w-6xl px-5 py-14 lg:px-8" aria-busy="true"><p className="text-sm font-bold text-muted">正在加载攻略…</p><div className="mt-6 grid gap-5 md:grid-cols-2">{[1, 2].map((item) => <div key={item} className="h-56 animate-pulse rounded-3xl border border-line bg-surface-soft" />)}</div></section>; }

@@ -1,0 +1,2 @@
+ALTER TABLE "point_batches" DROP CONSTRAINT "batch_expiry_status";--> statement-breakpoint
+ALTER TABLE "point_batches" ADD CONSTRAINT "batch_expiry_status" CHECK ("point_batches"."expiry_status" IN ('unknown', 'known', 'never') AND ("point_batches"."expiry_status" <> 'never' OR "point_batches"."expires_at" IS NULL) AND ("point_batches"."expiry_status" <> 'known' OR "point_batches"."expires_at" IS NOT NULL));

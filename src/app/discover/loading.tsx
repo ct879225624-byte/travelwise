@@ -1,0 +1,2 @@
+export default function Loading() { return <LoadingCards label="正在加载公开活动…" />; }
+function LoadingCards({ label }: { label: string }) { return <section className="mx-auto max-w-6xl px-5 py-14 lg:px-8" aria-busy="true"><p className="text-sm font-bold text-muted">{label}</p><div className="mt-6 grid gap-5 md:grid-cols-2">{[1, 2].map((item) => <div key={item} className="h-64 animate-pulse rounded-3xl border border-line bg-surface-soft" />)}</div></section>; }

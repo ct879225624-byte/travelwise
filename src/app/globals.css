@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f7f8f5;
+  --foreground: #18322f;
+  --muted: #60716d;
+  --line: #dce6e1;
+  --surface: #ffffff;
+  --surface-soft: #eef5f1;
+  --brand: #176b5b;
+  --brand-deep: #0e4d43;
+  --accent: #e6a74f;
+}
+
+* { box-sizing: border-box; }
+html { background: var(--background); }
+body {
+  margin: 0;
+  overflow-x: hidden;
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; text-decoration: none; }
+button, a { -webkit-tap-highlight-color: transparent; }
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-brand: var(--brand);
+  --color-brand-deep: var(--brand-deep);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-surface: var(--surface);
+  --color-surface-soft: var(--surface-soft);
+  --color-accent: var(--accent);
+}
+
+.eyebrow { letter-spacing: .12em; font-size: .72rem; font-weight: 700; text-transform: uppercase; color: var(--brand); }
+.paper-grid { background-image: linear-gradient(to right, rgba(23,107,91,.045) 1px, transparent 1px), linear-gradient(to bottom, rgba(23,107,91,.045) 1px, transparent 1px); background-size: 26px 26px; }
+.focus-ring:focus-visible { outline: 3px solid rgba(230,167,79,.7); outline-offset: 3px; }
+input, select, button { font: inherit; }
+button, select { cursor: pointer; }
+::selection { background: rgba(23,107,91,.18); }
