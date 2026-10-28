@@ -1,0 +1,178 @@
+name: TravelWise CI
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: travelwise_ci
+          POSTGRES_PASSWORD: travelwise_ci_password
+        ports:
+          - 127.0.0.1:5433:5432
+        options: >-
+          --health-cmd "pg_isready -U travelwise_ci -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.cache/ms-playwright
+    steps:
+      - name: Check out source
+        id: checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        id: setup_node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install locked dependencies
+        id: npm_ci
+        run: npm ci
+
+      - name: Initialize isolated PostgreSQL databases
+        id: init_postgres
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: "5433"
+          PGUSER: travelwise_ci
+          PGPASSWORD: travelwise_ci_password
+        run: |
+          node --input-type=module <<'NODE'
+          import postgres from "postgres";
+
+          const host = process.env.PGHOST;
+          const port = Number(process.env.PGPORT);
+          const username = process.env.PGUSER;
+          const password = process.env.PGPASSWORD;
+          const databases = ["travelwise_integration_test", "travelwise_e2e_test"];
+
+          if (host !== "127.0.0.1" || port !== 5433 || !username || !password) {
+            throw new Error("PostgreSQL isolation configuration is invalid.");
+          }
+
+          const open = (database) => postgres({
+            host,
+            port,
+            username,
+            password,
+            database,
+            max: 1,
+            connect_timeout: 5,
+            connection: { timezone: "UTC" },
+            onnotice: () => {},
+          });
+
+          const validate = (info, database) => {
+            if (info.database !== database || Number(info.server_port) !== 5432) {
+              throw new Error(`Unexpected PostgreSQL connection for ${database}.`);
+            }
+            console.log(`Validated client ${host}:${port} -> server ${info.server_host}:${info.server_port}, database ${info.database}`);
+          };
+
+          try {
+            const admin = open("postgres");
+            try {
+              const [adminInfo] = await admin`select current_database() as database, inet_server_addr()::text as server_host, inet_server_port() as server_port`;
+              validate(adminInfo, "postgres");
+              for (const database of databases) {
+                const [exists] = await admin`select 1 from pg_database where datname = ${database}`;
+                if (!exists) await admin.unsafe(`create database "${database}"`);
+              }
+            } finally {
+              await admin.end({ timeout: 5 });
+            }
+
+            for (const database of databases) {
+              const client = open(database);
+              try {
+                const [info] = await client`select current_database() as database, inet_server_addr()::text as server_host, inet_server_port() as server_port`;
+                validate(info, database);
+              } finally {
+                await client.end({ timeout: 5 });
+              }
+            }
+          } catch {
+            console.error("PostgreSQL isolation initialization failed.");
+            process.exitCode = 1;
+          }
+          NODE
+
+      - name: Run npm run check
+        id: check
+        run: npm run check
+
+      - name: Run npm run build
+        id: build
+        run: npm run build
+
+      - name: Run npm run test
+        id: unit_tests
+        run: npm run test
+
+      - name: Run database integration tests
+        id: integration_tests
+        env:
+          TEST_DATABASE_URL: postgres://travelwise_ci:travelwise_ci_password@127.0.0.1:5433/travelwise_integration_test
+        run: npm run test:db
+
+      - name: Install Ubuntu browser dependencies
+        id: playwright_deps
+        run: npx --no-install playwright install-deps chromium
+
+      - name: Install Chromium Headless Shell
+        id: playwright_shell
+        run: npx --no-install playwright install chromium --only-shell
+
+      - name: Run npm run test:e2e -- --workers=1
+        id: e2e_demo
+        env:
+          TRAVELWISE_DATA_SOURCE: demo
+        run: npm run test:e2e -- --workers=1
+
+      - name: Run PostgreSQL E2E tests
+        id: e2e_postgres
+        env:
+          TEST_DATABASE_URL: postgres://travelwise_ci:travelwise_ci_password@127.0.0.1:5433/travelwise_e2e_test
+        run: npm run test:e2e:db -- --workers=1
+
+      - name: Write redacted test summary
+        if: ${{ always() }}
+        env:
+          CHECK_STATUS: ${{ steps.check.outcome }}
+          BUILD_STATUS: ${{ steps.build.outcome }}
+          UNIT_STATUS: ${{ steps.unit_tests.outcome }}
+          INTEGRATION_STATUS: ${{ steps.integration_tests.outcome }}
+          PLAYWRIGHT_DEPS_STATUS: ${{ steps.playwright_deps.outcome }}
+          PLAYWRIGHT_SHELL_STATUS: ${{ steps.playwright_shell.outcome }}
+          E2E_DEMO_STATUS: ${{ steps.e2e_demo.outcome }}
+          E2E_POSTGRES_STATUS: ${{ steps.e2e_postgres.outcome }}
+        run: |
+          {
+            echo "## TravelWise CI"
+            echo
+            echo "| Suite | Status |"
+            echo "| --- | --- |"
+            echo "| npm run check | ${CHECK_STATUS} |"
+            echo "| npm run build | ${BUILD_STATUS} |"
+            echo "| npm run test | ${UNIT_STATUS} |"
+            echo "| database integration tests | ${INTEGRATION_STATUS} |"
+            echo "| Playwright Ubuntu dependencies | ${PLAYWRIGHT_DEPS_STATUS} |"
+            echo "| Chromium Headless Shell | ${PLAYWRIGHT_SHELL_STATUS} |"
+            echo "| npm run test:e2e -- --workers=1 | ${E2E_DEMO_STATUS} |"
+            echo "| PostgreSQL E2E tests | ${E2E_POSTGRES_STATUS} |"
+            echo
+            echo "Raw Playwright traces, screenshots, error context, database contents, and test-results are not uploaded."
+          } >> "$GITHUB_STEP_SUMMARY"
